@@ -1,0 +1,12 @@
+{
+  "env_type": ["real_world", "simulation"],
+  "scene_type_level1": ["kitchen", "retail_store", "laboratory", "warehouse"],
+  "scene_type_level2": ["tabletop", "shelf", "sink", "floor"],
+  "atomic_actions": ["pick", "place", "push", "pull", "align", "insert", "grasp"],
+  "object_names": ["table", "basket", "peach", "apple", "box", "cube", "peg", "hole"],
+  "colors": ["red", "blue", "green", "yellow", "white", "black", "transparent", "unknown"],
+  "device_models": ["Galaxea_R1_Lite", "Realman_Series", "Linkerbot_X"],
+  "end_effector_types": ["two_finger_end_effector", "three_finger_end_effector", "suction_cup", "dexterous_hand"],
+  "task_operation_types": ["fixed_single_arm", "fixed_dual_arm", "mobile_single_arm", "mobile_dual_arm"],
+  "tele_types": ["Master Arm", "VR Controller", "Keyboard", "SpaceMouse", "Vision Tracker"]
+}
