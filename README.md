@@ -1,84 +1,158 @@
-# RoboCoin Viewer 机器人数据查看器 🤖👁️
+# 🤖 RoboCoin Viewer - 数据清洗与元数据标注系统
 
-**基于 Rerun 的具身智能数据集自动化清洗、预览与管理工具**
+## 📌 项目简介
+专为**具身智能与机器人操作数据集**设计的智能处理系统，解决数据格式混杂、人工排查困难、标注规范不统一等痛点。
 
-## 🔍 核心亮点
-- 📦 **多格式支持**：支持 Unitree、LeRobot、HDF5、ROS（bag/mcap）、原始文件夹等格式
-- 🔍 **智能整理器**：自动识别混杂数据类型并分类归档
-- 🕵️‍♂️ **交互式审阅**：基于 Rerun 的可视化界面 + 键盘快捷键操作
-- 🎥 **并行预览**：首/中/尾帧并行比对快速质检
-- 🧼 **隔离系统**：异常数据自动移动到带时间戳的隔离区
+---
 
-![RoboCoin Viewer 演示图](demo.gif) <!-- 图片占位符 -->
+## 🔑 核心特性
 
-## 🛠️ 安装指南
+### 🔄 多模态/多格式适配器
+支持五种主流数据格式：
+- **HDF5** (工业级科学数据)
+- **ROS/mcap** (机器人操作系统)
+- **LeRobot** (开源机器人框架)
+- **Unitree** (商用机器人SDK)
+- **Folder** (图片序列)
 
-### 环境要求
-- Python `3.10`（参考 `.python-version`）
-- [Rust](https://rust-lang.org)（Rerun 依赖）
+通过工厂模式统一接口，新增格式只需实现`Adapter`接口：
+```python
+class Adapter(ABC):
+    @abstractmethod
+    def load_data(self, path: str) -> Dict[str, Any]: ...
+    @abstractmethod
+    def save_data(self, data: Dict[str, Any], path: str): ...
+```
 
-### 安装步骤
+### 🚀 基于 Rerun 的极速审查
+- **自动抽样对比**：提取首/中/尾帧生成对比视图
+- **交互式审核**：`B`键标记异常数据自动隔离至`_QUARANTINE`文件夹
+- **性能优势**：Rerun引擎实现1000FPS级帧率渲染
+
+### 🎛️ 动态配置驱动的标注UI
+基于`configs/vocabulary.json`驱动的声明式表单：
+- 支持**级联下拉框**（如场景分类）
+- 动态表格组件（物品属性标注）
+- 实时YAML生成
+
+示例字段定义：
+```json
+{
+  "key": "scene_level1",
+  "type": "selectbox",
+  "options": {
+    "Retail": "商超零售",
+    "Catering": "餐饮服务"
+  }
+}
+```
+
+### 🤖 内置大模型服务
+集成阿里云Qwen接口：
+- 中文指令自动翻译成专业英文
+- 示例输入：
+  ```text
+  把篮子放在桌子中间对齐，然后把桃子放进篮子
+  ```
+- 输出结果：
+  ```text
+  Align the basket at the center of the table, then place the peaches into the basket with precise orientation control
+  ```
+
+---
+
+## ⚙️ 安装指南
+使用uv进行依赖管理（推荐清华源）：
 ```bash
-# 克隆仓库
-git clone git@github.com:XuRuntian/robocoin-Viewer.git
-
-# 安装依赖
-cd robocoin-Viewer
+# 同步依赖
 uv sync
-```
 
-## 🚀 快速入门
-```bash
-# 启动
+# 启动标注系统
 uv run streamlit run src/ui/annotation_app.py
+
+# 安装为系统工具
+uv install -e .
 ```
 
-### 键盘操作指南
-| 按键       | 功能              |
-|-----------|-------------------|
-| `←`/`→`    | 切换上下数据集    |
-| `B`       | 标记为异常样本    |
-| `Esc`     | 退出审阅模式      |
+依赖列表：
+| 模块          | 用途                  |
+|---------------|-----------------------|
+| h5py          | HDF5格式处理          |
+| rerun-sdk     | 三维可视化引擎        |
+| rosbags       | ROS数据解析           |
+| pyyaml        | YAML配置生成          |
+| openai        | 大模型服务接口        |
 
-## 📁 支持格式
-| 格式       | 特征文件                  | 结构特点                     |
-|-----------|----------------------------|------------------------------|
-| Unitree   | `data.json`               | 人形机器人运动数据           |
-| LeRobot   | `meta/info.json` 或 `*.parquet` | 支持智能 chunk 识别          |
-| HDF5      | `*.hdf5`                  | 分层数据格式                 |
-| ROS       | `*.bag` 或 `*.mcap`         | 支持 Bag/MCAP 文件格式       |
-| 原始文件夹 | 任意未结构化数据的文件夹     | 基础文件整理功能             |
+---
 
-## 🌟 工作流程
-### 步骤 1：扫描与整理
-- 递归扫描目录自动识别混合数据类型
-- 自动生成类型专属归档目录：
-  - `Unitree_Data/`
-  - `HDF5_Data/`
-  - `_QUARANTINE_YYYYMMDD/`（异常数据区）
-- 智能 chunk 识别防止误操作
+## 🚀 快速开始
 
-### 步骤 2：交互式审阅
-- 在 Rerun 查看器中可视化序列
-- 键盘快捷键快速导航
-- 使用 `B` 键标记异常样本
+### 第一步：数据清洗与排查
+1. 启动可视化审查
+   ```bash
+   uv run python src/core/reviewer.py --data_path ./dataset
+   ```
+2. 使用`B`键标记异常样本
+3. 查看隔离文件夹`./dataset/_QUARANTINE`
 
-### 步骤 3：数据隔离
-- 异常样本自动移动到带时间戳的隔离目录
-- 生成包含以下信息的清单文件：
-  - 原始路径
-  - 隔离时间戳
-  - 隔离原因
+### 第二步：元数据标注
+1. 启动Web标注界面
+   ```bash
+   uv run streamlit run src/ui/annotation_app.py
+   ```
+2. 选择数据集目录
+3. 填写动态表单（支持字段自动补全）
+4. 导出YAML配置文件
 
-## 🧩 项目结构
+---
+
+## 🧠 高级配置
+### 添加新场景分类
+在`configs/vocabulary.json`中修改：
+```json
+{
+  "key": "scene_level1",
+  "options": {
+    "Retail": "商超零售",
+    "Catering": "餐饮服务",
+    "NewScene": "新场景类型"  // ← 新增选项
+  }
+}
 ```
-src/
-├── core/               # 核心逻辑与业务规则
-├── adapters/           # 格式适配器模块
-└── ui/                 # Rerun 可视化组件
+
+### 定义级联字段
+```json
+{
+  "key": "scene_level2",
+  "type": "selectbox_dependent",
+  "depends_on": "scene_level1",
+  "options_map": {
+    "NewScene": {
+      "SubScene1": "子场景1",
+      "SubScene2": "子场景2"
+    }
+  }
+}
 ```
 
-## 📆 未来规划
-- 🛠️ 生成配置文件的常用工作流
-- 📊 增强分析仪表盘
-- 📤 清洗后数据集的导出功能
+---
+
+## 📁 目录结构
+```
+robocoin-viewer/
+├── configs/              # 配置文件
+│   ├── vocabulary.json   # 标注字段定义
+│   └── schemas/          # 数据校验规则
+├── src/
+│   ├── adapters/         # 数据格式适配器
+│   ├── core/             # 核心逻辑
+│   │   ├── factory.py    # 工厂模式实现
+│   │   └── llm_service.py# 大模型服务
+│   └── ui/               # Web界面
+│       └── annotation_app.py # Streamlit主程序
+├── tools/                # 辅助工具
+└── tests/                # 单元测试
+```
+
+---
+
