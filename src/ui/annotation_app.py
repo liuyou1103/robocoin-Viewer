@@ -142,6 +142,7 @@ def render_field(field, current_data):
         return cleaned
 
 def setup_comparison_layout(sample_names, cameras):
+    """配置 Rerun 并排对比视图的蓝图 (自适应网格排版优化版)"""
     columns = []
     for idx, name in enumerate(sample_names):
         cam_views = []
@@ -150,11 +151,20 @@ def setup_comparison_layout(sample_names, cameras):
                 origin=f"preview/sample_{idx}/{cam}",
                 name=f"{cam}"
             ))
+        
+        # 👇 核心改动：把该样本下的所有相机视角，丢进自适应网格中 👇
+        # Rerun 会根据相机数量(比如6个)自动排版成完美的 3x2 或 2x3 网格
+        cam_grid = rrb.Grid(*cam_views)
+        
+        # 把文本框和相机网格垂直组合
         columns.append(rrb.Vertical(
             rrb.TextDocumentView(origin=f"preview/sample_{idx}/info", name=f"{name}"),
-            *cam_views,
+            cam_grid,
+            row_shares=[1, 12], # 比例分配：文字占 1 份，画面网格占 12 份，大幅压缩文字框高度
             name=f"Sample {idx+1}"
         ))
+        
+    # 整体水平排布多个样本 (首、中、尾)
     blueprint = rrb.Blueprint(rrb.Horizontal(*columns), collapse_panels=True)
     rr.send_blueprint(blueprint)
 

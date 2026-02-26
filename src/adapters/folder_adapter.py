@@ -88,6 +88,12 @@ class FolderAdapter(BaseDatasetReader):
             if img is not None: images[sensor] = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
         return FrameData(timestamp=float(index)/30.0, images=images, state={})
-
+    
+    def get_current_episode_path(self) -> str:
+        """[新增] 返回当前图片序列所在的文件夹路径"""
+        if self.episode_dirs and 0 <= self.current_episode_idx < len(self.episode_dirs):
+            return str(self.episode_dirs[self.current_episode_idx])
+        return None
+    
     def close(self):
         pass

@@ -104,6 +104,13 @@ class UnitreeAdapter(BaseDatasetReader):
         except: pass
 
         return FrameData(timestamp=frame_dict.get("idx", index)/self.fps, images=images, state=state)
-
+    
+    def get_current_episode_path(self) -> str:
+        """[新增] 返回 data.json 所在的父文件夹路径，作为整体隔离单位"""
+        if self.episode_files and 0 <= self.current_episode_idx < len(self.episode_files):
+            # 使用 .parent 获取包含 data.json 和 images 的整个数据包目录
+            return str(self.episode_files[self.current_episode_idx].parent)
+        return None
+    
     def close(self):
         pass

@@ -134,6 +134,12 @@ class HDF5Adapter(BaseDatasetReader):
             state=state_data
         )
 
+    def get_current_episode_path(self) -> str:
+        """[新增] 返回当前正在播放的 .hdf5 文件路径"""
+        if self.episode_files and 0 <= self.current_episode_idx < len(self.episode_files):
+            return str(self.episode_files[self.current_episode_idx])
+        return None
+
     def close(self):
         if self.file:
             self.file.close()

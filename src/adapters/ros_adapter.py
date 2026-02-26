@@ -166,6 +166,12 @@ class RosAdapter(BaseDatasetReader):
             else: return img_raw.reshape(h, w, -1)
         except: return None
 
+    def get_current_episode_path(self) -> str:
+        """[新增] 返回当前 .mcap 文件或 .bag 文件夹的路径"""
+        if self.episode_files and 0 <= self.current_episode_idx < len(self.episode_files):
+            return str(self.episode_files[self.current_episode_idx])
+        return None
+
     def close(self):
         if self.reader:
             try:

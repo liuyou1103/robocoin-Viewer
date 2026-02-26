@@ -65,6 +65,13 @@ class BaseDatasetReader(ABC):
         """
         pass
     
+    def get_current_episode_path(self) -> str:
+        """
+        获取当前正在读取的 Episode 的物理绝对路径。
+        对于 HDF5，返回的是 .hdf5 文件路径；
+        对于 Dorobot/LeRobot，返回的是 Episode 所在的子文件夹路径。
+        """
+        pass
     @abstractmethod
     def close(self):
         """释放文件句柄"""

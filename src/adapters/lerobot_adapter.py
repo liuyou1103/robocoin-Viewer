@@ -180,7 +180,13 @@ class LeRobotAdapter(BaseDatasetReader):
             images=images,
             state={k: v for k, v in state.items() if v is not None}
         )
-
+    def get_current_episode_path(self) -> str:
+        """精准返回需要被隔离的数据包物理路径"""
+        if self.dorobot_version and self.current_dataset_root:
+            return str(self.current_dataset_root)
+        else:
+            # 原生 LeRobot 格式：所有数据混在一起，无法简单进行物理隔离
+            return None
     def close(self):
         for reader in self.cap_cache.values():
             try:

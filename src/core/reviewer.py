@@ -143,18 +143,24 @@ class DatasetReviewer:
             print(f"Key Error: {e}")
 
     def _get_actual_path(self):
-        """精准获取当前 Episode 文件的绝对路径 (隔离坏数据时用到)"""
-        actual_path = self.dataset_paths[self.current_idx]
-        if self.current_reader and hasattr(self.current_reader, 'episode_files') and self.current_reader.episode_files:
-            actual_path = str(self.current_reader.episode_files[self.current_ep_idx])
+        """通过多态调用，获取当前数据对象建议的隔离路径"""
+        if self.current_reader and hasattr(self.current_reader, 'get_current_episode_path'):
+            return self.current_reader.get_current_episode_path()
+        return None # 如果返回 None，说明该数据类型不支持物理隔离
+                    
         return actual_path
 
     def _toggle_bad_mark(self):
         actual_path = self._get_actual_path()
+        
+        if not actual_path:
+            # 优雅地处理原生 LeRobot 这类无法隔离的数据
+            print("\n⚠️ [警告]: 当前数据格式 (如原生 LeRobot) 不支持按独立 Episode 进行物理隔离！")
+            return
+            
         name = Path(actual_path).name
         if actual_path not in self.bad_datasets:
             self.bad_datasets.append(actual_path)
-            # 加回车防遮挡
             print(f"\n⚠️ [标记异常]: {name}")
         else:
             self.bad_datasets.remove(actual_path)
