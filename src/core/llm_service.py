@@ -72,3 +72,28 @@ class QwenLLMService:
         # 将返回的多行文本重新切分成列表
         translated_list = [line.strip() for line in result_text.split('\n') if line.strip()]
         return translated_list
+    
+    def translate_task_name(self, chinese_text: str) -> str:
+        """
+        将中文动作描述翻译为标准的英文下划线格式 (verb_noun)
+        示例：输入 "拿苹果" -> 输出 "pick_apple"
+        """
+        if not chinese_text.strip():
+            return ""
+
+        system_prompt = """
+        You are a professional robotics dataset namer.
+        Translate the user's Chinese robot action into a concise English phrase.
+        
+        RULES:
+        1. Use ONLY lowercase letters and underscores (_).
+        2. Format: verb_object (e.g., 'pick_apple', 'open_drawer').
+        3. Use professional robotics verbs (pick, place, push, pull, open, close, insert).
+        4. RETURN ONLY THE PHRASE, no explanation, no quotes.
+        """
+        
+        # 调用通用的 chat 接口
+        result = self.chat(chinese_text, system_prompt)
+        # 简单清理：转小写，空格换下划线，过滤非法字符
+        cleaned = result.strip().lower().replace(" ", "_")
+        return cleaned

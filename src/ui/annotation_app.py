@@ -66,9 +66,9 @@ def render_field(field, current_data, all_fields=None):
     if ftype == "text":
         return st.text_input(label, placeholder=field.get("placeholder", ""))
         
-    # 👇 新增：专门为数据集名称定制的【复合输入控件】 👇
+    # 👇 新增：支持 Qwen 翻译的【复合数据集名称控件】 👇
     elif ftype == "dataset_name_builder":
-        # 自动去全局 schema 中寻找 "device_model" 的选项
+        # 1. 获取设备选项（代码逻辑保持不变）
         device_opts = {}
         if all_fields:
             for f in all_fields:
@@ -77,22 +77,61 @@ def render_field(field, current_data, all_fields=None):
                     break
         
         st.markdown(f"**{label}**")
-        col1, col2 = st.columns([1, 1])
+        
+        # 2. 初始化 state 存储后缀
+        state_key = f"suffix_val_{key}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = ""
+
+        # 🌟 定义翻译的回调函数
+        def translate_callback():
+            # 回调函数在脚本重新运行前执行，此时修改 state 是安全的
+            api_key = st.session_state.get("dashscope_api_key", "")
+            current_text = st.session_state[state_key] # 直接从绑定的 key 中取值
+            
+            if api_key and current_text.strip():
+                try:
+                    from src.core.llm_service import QwenLLMService
+                    # 临时注入环境变量给 LLMService 使用
+                    os.environ["DASHSCOPE_API_KEY"] = api_key
+                    llm = QwenLLMService()
+                    translated = llm.translate_task_name(current_text)
+                    # 更新 state，下次 Rerun 时输入框会自动显示新值
+                    st.session_state[state_key] = translated
+                except Exception as e:
+                    # 注意：回调函数里没法直接 st.error，通常用 print 或稍后在 UI 处理
+                    print(f"翻译回调失败: {e}")
+
+        col1, col2, col3 = st.columns([2, 2, 1])
         with col1:
             opts_keys = list(device_opts.keys())
             fmt_func = lambda x, d=device_opts: f"{x} ({d[x]})" if d.get(x) else x
             prefix = st.selectbox("1. 选择本体型号", options=opts_keys, format_func=fmt_func, key=f"prefix_{key}")
-        with col2:
-            suffix = st.text_input("2. 动词_名词 (如 pick_apple)", placeholder="pick_apple", key=f"suffix_{key}")
             
-        # 拼接最终的名字
-        final_name = f"{prefix}_{suffix}" if suffix else prefix
+        with col2:
+            # 🌟 关键：直接绑定 key，不要设置 value 参数
+            st.text_input(
+                "2. 动词_名词 (可输中文)", 
+                placeholder="例如: pick_apple", 
+                key=state_key 
+            )
+            
+        with col3:
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            # 🌟 关键：使用 on_click 触发回调
+            st.button(
+                "🌐 翻译名称", 
+                key=f"trans_name_btn_{key}", 
+                on_click=translate_callback,
+                help="点击将中文动作描述翻译为 verb_noun 格式"
+            )
+            
+        # 拼接最终的名字（直接从 state 读最新值）
+        final_name = f"{prefix}_{st.session_state[state_key]}" if st.session_state[state_key] else prefix
         st.caption(f"预览最终名称: `{final_name}`")
         return final_name
-    # 👆 ----------------------------------------- 👆
         
     elif ftype == "textarea":
-        # 引入 state 机制以便翻译后覆盖当前文本
         state_key = f"textarea_{key}"
         if state_key not in st.session_state:
             st.session_state[state_key] = field.get("default", "")
@@ -258,7 +297,6 @@ def main():
 
         st.header("📂 数据源与配置项")
         
-        # --- 1. 带弹窗按钮的 Schema 文件选择 ---
         col1, col2 = st.columns([4, 1])
         with col1:
             vocab_input = st.text_input("Schema 配置文件 (JSON):", value=st.session_state['vocab_path'])
@@ -275,7 +313,6 @@ def main():
 
         vocab = load_vocabulary(st.session_state['vocab_path'])
 
-        # --- 2. 带弹窗按钮的数据集文件夹选择 ---
         col3, col4 = st.columns([4, 1])
         with col3:
             dataset_input = st.text_input("输入数据集根路径:", value=st.session_state['dataset_path'])
@@ -490,100 +527,79 @@ def main():
                                         st.rerun()
 
                     elif field_type == "selectbox_dependent":
-                        with st.expander(f"🔗 级联字段: {field['label']} (依赖于 {field.get('depends_on', '未知')})"):
+                        with st.expander(f"🔗 级联字段: {field['label']} ({field['key']} 依赖于 {field.get('depends_on', '未知')})"):
                             options_map = field.get("options_map", {})
+                            parent_key = field.get("depends_on")
+                            
+                            # --- 核心改进：获取父级字段真正拥有的所有选项 ---
+                            parent_options = {}
+                            for f in fields:
+                                if f.get("key") == parent_key:
+                                    parent_options = f.get("options", {})
+                                    break
+                            
+                            # 所有的父级 Key (来自父级字段的定义)
+                            all_valid_parent_keys = list(parent_options.keys())
+                            
                             st.markdown("##### 现有选项映射")
-                            for parent_val, sub_options in options_map.items():
-                                st.markdown(f"**当父级选择 `{parent_val}` 时：**")
-                                sub_cols = st.columns(3)
-                                for i, (opt_key, opt_label) in enumerate(list(sub_options.items())):
-                                    col = sub_cols[i % 3]
-                                    col.markdown(f"`{opt_key}` - {opt_label}")
-                                    if col.button("🗑️ 删除", key=f"del_sub_{field['key']}_{parent_val}_{opt_key}"):
-                                        del current_schema["fields"][idx]["options_map"][parent_val][opt_key]
-                                        with open(curr_vocab_path, 'w', encoding='utf-8') as f:
-                                            json.dump(current_schema, f, ensure_ascii=False, indent=2)
-                                        load_vocabulary.clear()
-                                        st.rerun()
+                            if options_map:
+                                for p_val, sub_options in list(options_map.items()):
+                                    # 如果父级 Key 在父级字段里已经被删了，这里用红色标出提醒
+                                    label_suffix = "" if p_val in parent_options else " ⚠️ (父级已不存在)"
+                                    st.markdown(f"**当父级选择 `{p_val}` ({parent_options.get(p_val, '未知')}){label_suffix} 时：**")
+                                    
+                                    sub_cols = st.columns(3)
+                                    for i, (opt_key, opt_label) in enumerate(list(sub_options.items())):
+                                        col = sub_cols[i % 3]
+                                        col.markdown(f"`{opt_key}` - {opt_label}")
+                                        if col.button("🗑️", key=f"del_sub_{field['key']}_{p_val}_{opt_key}"):
+                                            del current_schema["fields"][idx]["options_map"][p_val][opt_key]
+                                            # 如果该父级下没有子项了，连父级 Key 一起删掉，保持 JSON 干净
+                                            if not current_schema["fields"][idx]["options_map"][p_val]:
+                                                del current_schema["fields"][idx]["options_map"][p_val]
+                                            with open(curr_vocab_path, 'w', encoding='utf-8') as f:
+                                                json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                            load_vocabulary.clear()
+                                            st.rerun()
+                            else:
+                                st.caption("暂无映射关系")
                                         
                             st.markdown("---")
-                            st.markdown("##### ➕ 为父级新增选项")
-                            new_col1, new_col2, new_col3, new_col4 = st.columns([2, 2, 2, 1])
-                            all_parent_keys = list(options_map.keys()) if options_map else ["unknown"]
-                            with new_col1: target_parent = st.selectbox("选择父级条件", all_parent_keys, key=f"target_parent_{field['key']}")
-                            with new_col2: new_sub_key = st.text_input("子选项英文 Key", key=f"new_sub_key_{field['key']}")
-                            with new_col3: new_sub_label = st.text_input("子选项中文名", key=f"new_sub_label_{field['key']}")
-                            with new_col4:
-                                st.markdown("<br>", unsafe_allow_html=True)
-                                if st.button("添加", key=f"add_sub_{field['key']}", use_container_width=True):
-                                    if not new_sub_key.strip() or not new_sub_label.strip():
-                                        st.warning("输入不能为空！")
-                                    else:
-                                        if "options_map" not in current_schema["fields"][idx]:
-                                            current_schema["fields"][idx]["options_map"] = {}
-                                        if target_parent not in current_schema["fields"][idx]["options_map"]:
-                                            current_schema["fields"][idx]["options_map"][target_parent] = {}
-                                        current_schema["fields"][idx]["options_map"][target_parent][new_sub_key.strip()] = new_sub_label.strip()
-                                        with open(curr_vocab_path, 'w', encoding='utf-8') as f:
-                                            json.dump(current_schema, f, ensure_ascii=False, indent=2)
-                                        load_vocabulary.clear()
-                                        st.rerun()
-                    
-                    elif field_type == "object_table":
-                        with st.expander(f"📊 表格选项维护: {field['label']} ({field['key']})"):
-                            # 维护物品名称 (name_options)
-                            st.markdown("##### 物品名称池 (name_options)")
-                            name_opts = field.get("name_options", {})
-                            n_cols = st.columns(3)
-                            for i, (opt_key, opt_label) in enumerate(list(name_opts.items())):
-                                col = n_cols[i % 3]
-                                col.markdown(f"`{opt_key}` - {opt_label}")
-                                if col.button("🗑️ 删除", key=f"del_name_{field['key']}_{opt_key}"):
-                                    del current_schema["fields"][idx]["name_options"][opt_key]
-                                    with open(curr_vocab_path, 'w', encoding='utf-8') as f:
-                                        json.dump(current_schema, f, ensure_ascii=False, indent=2)
-                                    load_vocabulary.clear()
-                                    st.rerun()
-                                    
-                            c1, c2, c3 = st.columns([2, 2, 1])
-                            with c1: n_key = st.text_input("英文物品名 (如 cup)", key=f"new_n_key_{field['key']}")
-                            with c2: n_label = st.text_input("中文显示名 (如 杯子)", key=f"new_n_label_{field['key']}")
-                            with c3:
-                                st.markdown("<br>", unsafe_allow_html=True)
-                                if st.button("添加物品", key=f"add_n_{field['key']}", use_container_width=True):
-                                    if n_key.strip() and n_label.strip():
-                                        current_schema["fields"][idx]["name_options"][n_key.strip()] = n_label.strip()
-                                        with open(curr_vocab_path, 'w', encoding='utf-8') as f:
-                                            json.dump(current_schema, f, ensure_ascii=False, indent=2)
-                                        load_vocabulary.clear()
-                                        st.rerun()
-                                        
-                            st.markdown("---")
-                            st.markdown("##### 颜色池 (color_options)")
-                            color_opts = field.get("color_options", {})
-                            co_cols = st.columns(3)
-                            for i, (opt_key, opt_label) in enumerate(list(color_opts.items())):
-                                col = co_cols[i % 3]
-                                col.markdown(f"`{opt_key}` - {opt_label}")
-                                if col.button("🗑️ 删除", key=f"del_color_{field['key']}_{opt_key}"):
-                                    del current_schema["fields"][idx]["color_options"][opt_key]
-                                    with open(curr_vocab_path, 'w', encoding='utf-8') as f:
-                                        json.dump(current_schema, f, ensure_ascii=False, indent=2)
-                                    load_vocabulary.clear()
-                                    st.rerun()
-                                    
-                            c4, c5, c6 = st.columns([2, 2, 1])
-                            with c4: c_key = st.text_input("英文颜色 (如 red)", key=f"new_c_key_{field['key']}")
-                            with c5: c_label = st.text_input("中文显示 (如 红色)", key=f"new_c_label_{field['key']}")
-                            with c6:
-                                st.markdown("<br>", unsafe_allow_html=True)
-                                if st.button("添加颜色", key=f"add_c_{field['key']}", use_container_width=True):
-                                    if c_key.strip() and c_label.strip():
-                                        current_schema["fields"][idx]["color_options"][c_key.strip()] = c_label.strip()
-                                        with open(curr_vocab_path, 'w', encoding='utf-8') as f:
-                                            json.dump(current_schema, f, ensure_ascii=False, indent=2)
-                                        load_vocabulary.clear()
-                                        st.rerun()
+                            st.markdown("##### ➕ 为父级新增子选项")
+                            if not all_valid_parent_keys:
+                                st.warning(f"请先在「{parent_key}」字段中添加选项！")
+                            else:
+                                new_col1, new_col2, new_col3, new_col4 = st.columns([2, 2, 2, 1])
+                                
+                                with new_col1:
+                                    # 这里保证了下拉列表里一定会出现你在“一级场景”新加的东西
+                                    target_p = st.selectbox(
+                                        "选择父级 Key", 
+                                        all_valid_parent_keys, 
+                                        format_func=lambda x: f"{x} ({parent_options.get(x)})",
+                                        key=f"target_p_sel_{field['key']}"
+                                    )
+                                with new_col2:
+                                    new_s_key = st.text_input("子项英文 Key", key=f"new_s_k_{field['key']}")
+                                with new_col3:
+                                    new_s_label = st.text_input("子项中文名", key=f"new_s_l_{field['key']}")
+                                with new_col4:
+                                    st.markdown("<br>", unsafe_allow_html=True)
+                                    if st.button("添加", key=f"add_sub_btn_{field['key']}", use_container_width=True):
+                                        if new_s_key.strip() and new_s_label.strip():
+                                            if "options_map" not in current_schema["fields"][idx]:
+                                                current_schema["fields"][idx]["options_map"] = {}
+                                            
+                                            # 初始化该父级的字典
+                                            if target_p not in current_schema["fields"][idx]["options_map"]:
+                                                current_schema["fields"][idx]["options_map"][target_p] = {}
+                                                
+                                            current_schema["fields"][idx]["options_map"][target_p][new_s_key.strip()] = new_s_label.strip()
+                                            
+                                            with open(curr_vocab_path, 'w', encoding='utf-8') as f:
+                                                json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                            load_vocabulary.clear()
+                                            st.rerun()
 
 if __name__ == "__main__":
     main()
