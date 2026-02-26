@@ -64,6 +64,10 @@ class Adapter(ABC):
 ## ⚙️ 安装指南
 使用uv进行依赖管理（推荐清华源）：
 ```bash
+# 安装uv
+pip install uv
+# 安装系统依赖
+sudo apt-get install python3-tk
 # 同步依赖
 uv sync
 
