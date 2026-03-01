@@ -531,7 +531,10 @@
         "brown": "棕色",
         "gray": "灰色",
         "gold": "金色",
-        "silver": "银色"
+        "silver": "银色",
+        "other": "其他颜色",
+        "unknown": "未知颜色",
+        "none": "不适用"
       },
       "group": "动作与物品"
     },
