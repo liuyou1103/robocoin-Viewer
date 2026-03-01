@@ -455,7 +455,7 @@ def main():
             elif not collected_data.get("dataset_name"):
                 st.error("请填写数据集名称！")
             else:
-                save_path = ConfigGenerator.analyze_and_save(collected_data, target_dir)
+                save_path = ConfigGenerator.analyze_and_save(collected_data, target_dir, filename="local_dataset_info.yaml")
                 st.success(f"🎉 标注文件生成成功！\n文件路径: `{save_path}`")
                 
                 with st.expander("点击查看生成的 YAML 内容 (纯英文)"):
