@@ -185,7 +185,22 @@ def render_field(field, current_data, all_fields=None):
         return st.multiselect(label, options=opts_keys, format_func=fmt_func)
         
     elif ftype == "number":
-        return st.number_input(label, value=field.get("default", 0.0), format="%.1f")
+        min_val = field.get("min_value", None)
+        max_val = field.get("max_value", None)
+        step_val = field.get("step", None)
+        default_val = field.get("default", 0)
+        
+        # 动态推断格式：如果 default 是浮点数则默认保留1位小数，如果是整数则按整数显示
+        fmt = field.get("format", "%.1f" if isinstance(default_val, float) else "%d")
+        
+        return st.number_input(
+            label, 
+            value=default_val, 
+            min_value=min_val, 
+            max_value=max_val, 
+            step=step_val, 
+            format=fmt
+        )
         
     elif ftype == "object_table":
         if f'table_{key}' not in st.session_state:

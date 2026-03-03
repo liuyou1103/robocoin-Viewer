@@ -613,6 +613,17 @@
         "bci": "脑机接口"
       },
       "group": "硬件配置"
+    },
+    {
+      "key": "dataset_batch_number",
+      "label": "数据批号",
+      "type": "number",
+      "default": 0,
+      "min_value": 0,
+      "max_value": 100,
+      "step": 1,
+      "format": "%d",
+      "group": "基本信息"
     }
   ]
 }
