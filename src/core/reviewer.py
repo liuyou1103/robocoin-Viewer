@@ -143,12 +143,15 @@ class DatasetReviewer:
             print(f"Key Error: {e}")
 
     def _get_actual_path(self):
-        """通过多态调用，获取当前数据对象建议的隔离路径"""
+        """获取当前轨迹的路径，如果不支持隔离，则回滚到根目录"""
+        path = None
         if self.current_reader and hasattr(self.current_reader, 'get_current_episode_path'):
-            return self.current_reader.get_current_episode_path()
-        return None # 如果返回 None，说明该数据类型不支持物理隔离
+            path = self.current_reader.get_current_episode_path()
+        
+        # 如果 path 是 None (比如 LeRobot)，就返回 self.current_path
+        # 这样下面的 Path(actual_path).name 就永远有值可以取了
+        return path if path else self.current_path
                     
-        return actual_path
 
     def _toggle_bad_mark(self):
         actual_path = self._get_actual_path()
@@ -168,6 +171,9 @@ class DatasetReviewer:
 
     def _refresh_view(self):
         actual_path = self._get_actual_path()
+        if actual_path is None:
+            print("\n⚠️ [警告]: 当前数据格式不支持物理隔离，将使用根目录显示。")
+            actual_path = self.current_path # 临时补救方案
         name = Path(actual_path).name
         
         status_icon = "❌ BAD" if actual_path in self.bad_datasets else "✅ OK"

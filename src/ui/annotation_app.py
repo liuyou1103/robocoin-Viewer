@@ -436,23 +436,48 @@ def main():
 
             st.subheader("2. 人工逐帧审核 (排查不同任务数据)")
             st.markdown("通过 Rerun 窗口检查是否混入了**无关任务/动作错误**的数据。")
+
+            # === 新增：展示上一次审核的结果面板 ===
+            if 'review_summary' in st.session_state:
+                summary = st.session_state['review_summary']
+                st.markdown("#### 📊 审核结果汇总")
+                col_a, col_b, col_c = st.columns(3)
+                col_a.metric("总审核数据量", f"{summary['total']} 条")
+                col_b.metric("❌ Bad Mark 数量", f"{summary['bad']} 条")
+                col_c.metric("✅ 最终有效数据", f"{summary['good']} 条")
+
+                if summary['bad'] > 0 and 'quarantine_dir' in st.session_state:
+                    st.warning(f"🔒 异常数据已自动隔离至:\n`{st.session_state['quarantine_dir']}`")
+                else:
+                    st.success("✨ 完美！未发现混入的其他任务数据。")
+                st.markdown("---")
+
             if st.button("🚀 启动人工审核 (Rerun)"):
                 with st.spinner("请在弹出的 Rerun 窗口中操作 (使用键盘 N/P 切换, B 标记异常, Q/Esc 退出)..."):
                     viz = RerunVisualizer("RoboCoin_Review")
                     reviewer = DatasetReviewer(viz)
+                    print("DEBUG: valid_paths before review:", valid_paths)  # 调试输出，确认传入的路径列表
                     bad_datasets = reviewer.start_review(valid_paths)
-                    
+
+                    # === 新增：将结果存入 session_state 以便 UI 刷新后持久显示 ===
+                    st.session_state['review_summary'] = {
+                        'total': len(valid_paths),
+                        'bad': len(bad_datasets),
+                        'good': len(valid_paths) - len(bad_datasets)
+                    }
+
                     if bad_datasets:
                         organizer = DatasetOrganizer(target_dir)
                         quarantine_dir = organizer.quarantine_bad_data(bad_datasets, target_dir)
-                        st.warning(f"🔒 发现异常任务数据！已将其隔离到: {quarantine_dir}")
+                        st.session_state['quarantine_dir'] = quarantine_dir
                         final_paths = [p for p in valid_paths if p not in bad_datasets]
                         st.session_state['valid_paths'] = final_paths
-                        st.success(f"🧹 剔除异常数据后，剩余有效数据: {len(final_paths)} 条")
-                        st.rerun()  
                     else:
-                        st.success("✨ 完美！未发现混入的其他任务数据。")
-                        st.rerun()
+                        if 'quarantine_dir' in st.session_state:
+                            del st.session_state['quarantine_dir']
+
+                    # 强制刷新界面，让上方的统计面板显示出来
+                    st.rerun()
 
             st.subheader("3. 抽样对比预览 (检查命名与视频内容)")
             st.markdown("自动抽取 首、中、尾 3个样本进行并排播放，以便宏观确认数据与标注预期是否相符。")
