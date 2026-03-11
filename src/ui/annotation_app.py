@@ -348,14 +348,35 @@ def main():
             if not os.path.exists(target_dir):
                 st.error("路径不存在！")
             else:
-                inspector = DatasetInspector(target_dir)
-                inspector.scan()
-                if inspector.check_consistency():
-                    st.session_state['grouped_datasets'] = inspector.grouped_datasets
-                    st.session_state['valid_paths'] = inspector.get_all_valid_paths()
-                    st.success("扫描成功！")
+                # ==========================================
+                # 优化 1 & 2: 检查配置文件的状态
+                # ==========================================
+                uuid_file = os.path.join(target_dir, "dataset_uuid.yaml")
+                local_dataset_file = os.path.join(target_dir, "local_dataset_info.yaml")
+                local_task_file = os.path.join(target_dir, "local_task_info.yaml")
+
+                # 优化 1：如果存在 dataset_uuid.yaml，直接拦截并拒绝后续操作
+                if os.path.exists(uuid_file):
+                    st.error("🚫 扫描终止：检测到 `dataset_uuid.yaml` 文件！该数据集已被标记为已入库，拒绝进行后续操作。")
+                    # 清除状态字典，切断后续步骤（Tab1 和 Tab2）的渲染依赖
+                    st.session_state.pop('grouped_datasets', None)
+                    st.session_state.pop('valid_paths', None)
+                
                 else:
-                    st.error("一致性检查失败，请检查数据格式。")
+                    # 优化 2：如果没有 UUID，但已经有了本地配置文件，给出警告提醒，但允许放行
+                    if os.path.exists(local_dataset_file) and os.path.exists(local_task_file):
+                        st.warning("⚠️ 提醒：该数据集已存在 `local_dataset_info.yaml` 和 `local_task_info.yaml`，说明之前已经填写过配置。您可以继续审核，但再次生成 YAML 将会覆盖旧文件。")
+                    
+                    # 执行原有的扫描逻辑
+                    with st.spinner("正在扫描数据集..."):
+                        inspector = DatasetInspector(target_dir)
+                        inspector.scan()
+                        if inspector.check_consistency():
+                            st.session_state['grouped_datasets'] = inspector.grouped_datasets
+                            st.session_state['valid_paths'] = inspector.get_all_valid_paths()
+                            st.success("✅ 扫描成功！")
+                        else:
+                            st.error("❌ 一致性检查失败，请检查数据格式。")
         
         if 'grouped_datasets' in st.session_state and 'valid_paths' in st.session_state:
             # 获取所有检测到的数据类型
