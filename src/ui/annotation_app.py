@@ -348,14 +348,35 @@ def main():
             if not os.path.exists(target_dir):
                 st.error("路径不存在！")
             else:
-                inspector = DatasetInspector(target_dir)
-                inspector.scan()
-                if inspector.check_consistency():
-                    st.session_state['grouped_datasets'] = inspector.grouped_datasets
-                    st.session_state['valid_paths'] = inspector.get_all_valid_paths()
-                    st.success("扫描成功！")
+                # ==========================================
+                # 优化 1 & 2: 检查配置文件的状态
+                # ==========================================
+                uuid_file = os.path.join(target_dir, "dataset_uuid.yaml")
+                local_dataset_file = os.path.join(target_dir, "local_dataset_info.yaml")
+                local_task_file = os.path.join(target_dir, "local_task_info.yaml")
+
+                # 优化 1：如果存在 dataset_uuid.yaml，直接拦截并拒绝后续操作
+                if os.path.exists(uuid_file):
+                    st.error("🚫 扫描终止：检测到 `dataset_uuid.yaml` 文件！该数据集已被标记为已入库，拒绝进行后续操作。")
+                    # 清除状态字典，切断后续步骤（Tab1 和 Tab2）的渲染依赖
+                    st.session_state.pop('grouped_datasets', None)
+                    st.session_state.pop('valid_paths', None)
+                
                 else:
-                    st.error("一致性检查失败，请检查数据格式。")
+                    # 优化 2：如果没有 UUID，但已经有了本地配置文件，给出警告提醒，但允许放行
+                    if os.path.exists(local_dataset_file) and os.path.exists(local_task_file):
+                        st.warning("⚠️ 提醒：该数据集已存在 `local_dataset_info.yaml` 和 `local_task_info.yaml`，说明之前已经填写过配置。您可以继续审核，但再次生成 YAML 将会覆盖旧文件。")
+                    
+                    # 执行原有的扫描逻辑
+                    with st.spinner("正在扫描数据集..."):
+                        inspector = DatasetInspector(target_dir)
+                        inspector.scan()
+                        if inspector.check_consistency():
+                            st.session_state['grouped_datasets'] = inspector.grouped_datasets
+                            st.session_state['valid_paths'] = inspector.get_all_valid_paths()
+                            st.success("✅ 扫描成功！")
+                        else:
+                            st.error("❌ 一致性检查失败，请检查数据格式。")
         
         if 'grouped_datasets' in st.session_state and 'valid_paths' in st.session_state:
             # 获取所有检测到的数据类型
@@ -469,18 +490,63 @@ def main():
                         collected_data[field["key"]] = render_field(field, collected_data, schema_fields)
 
         st.markdown("---")
-        if st.button("💾 生成 YAML 标注文件", type="primary"):
+        
+        # ==========================================
+        # 优化：状态检查与二次确认逻辑
+        # ==========================================
+        uuid_file = os.path.join(target_dir, "dataset_uuid.yaml")
+        local_dataset_file = os.path.join(target_dir, "local_dataset_info.yaml")
+        local_task_file = os.path.join(target_dir, "local_task_info.yaml")
+        
+        is_locked = os.path.exists(uuid_file)
+        has_old_config = os.path.exists(local_dataset_file) and os.path.exists(local_task_file)
+
+        # 初始化 Session State，用于控制确认框的显示
+        if "show_overwrite_confirm" not in st.session_state:
+            st.session_state.show_overwrite_confirm = False
+
+        if is_locked:
+            st.error("🚫 该数据集已入库 (检测到 `dataset_uuid.yaml`)，已锁定配置修改，无法重新生成或覆盖配置文件。")
+
+        # 封装保存逻辑为独立函数，保持代码整洁
+        def execute_save():
             if 'dataset_path' not in st.session_state:
                 st.warning("请先在「数据清洗与排查」页面加载数据！")
             elif not collected_data.get("dataset_name"):
                 st.error("请填写数据集名称！")
             else:
                 save_path = ConfigGenerator.analyze_and_save(collected_data, target_dir, filename="local_dataset_info.yaml")
-                st.success(f"🎉 标注文件生成成功！\n文件路径: `{save_path}`")
-                
+                st.success(f"🎉 标注文件生成/覆盖成功！\n文件路径: `{save_path}`")
                 with st.expander("点击查看生成的 YAML 内容 (纯英文)"):
                     st.code(ConfigGenerator.generate_yaml_string(collected_data), language="yaml")
+            
+            # 保存完毕后，关闭确认框状态
+            st.session_state.show_overwrite_confirm = False
 
+        # 1. 主按钮：触发生成或触发确认框
+        if st.button("💾 生成 YAML 标注文件", type="primary", disabled=is_locked):
+            if has_old_config:
+                # 触发二次确认状态
+                st.session_state.show_overwrite_confirm = True
+            else:
+                # 没有旧文件，直接保存
+                execute_save()
+
+        # 2. 渲染二次确认框 (受 Session State 控制)
+        if st.session_state.show_overwrite_confirm:
+            st.warning("⚠️ 发现当前目录已存在旧的配置文件 (`local_dataset_info.yaml` / `local_task_info.yaml`)。继续生成将会 **覆盖** 这些文件，确定要覆盖吗？")
+            
+            col_btn1, col_btn2 = st.columns([1, 1])
+            with col_btn1:
+                # 确认覆盖按钮
+                if st.button("🚨 确认覆盖", type="primary", use_container_width=True):
+                    execute_save()
+                    st.rerun() # 强制刷新，清理掉确认界面的 UI
+            with col_btn2:
+                # 取消按钮
+                if st.button("取消操作", use_container_width=True):
+                    st.session_state.show_overwrite_confirm = False
+                    st.rerun() # 强制刷新，退回正常状态
     # ==========================================
     # TAB 3: 词库维护 (可视化配置)
     # ==========================================
