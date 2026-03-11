@@ -58,55 +58,51 @@ def clean_editor_value(val):
     return val
 
 def render_field(field, current_data, all_fields=None):
-    """配置驱动：根据 schema 定义自动渲染 Streamlit 控件并返回收集到的值"""
     key = field["key"]
     label = field["label"]
     ftype = field["type"]
-    
+
+    # ======= 需求1: 拦截下方的本体型号选项，直接取顶部的选择结果 =======
+    if key == "device_model":
+        # 不在界面上渲染，直接返回顶部 dataset_name_builder 选择的值
+        # 注意 vocabulary 中它是 multiselect，所以返回列表
+        val = st.session_state.get("prefix_dataset_name", "")
+        return [val] if val else []
+
     if ftype == "text":
         return st.text_input(label, placeholder=field.get("placeholder", ""))
-        
-    # 👇 新增：支持 Qwen 翻译的【复合数据集名称控件】 👇
+
     elif ftype == "dataset_name_builder":
-        # 1. 获取设备选项（代码逻辑保持不变）
         device_opts = {}
         if all_fields:
             for f in all_fields:
                 if f.get("key") == "device_model":
                     device_opts = f.get("options", {})
                     break
-        
+
         st.markdown(f"**{label}**")
-        
-        # 2. 初始化 state 存储后缀
         state_key = f"suffix_val_{key}"
         if state_key not in st.session_state:
             st.session_state[state_key] = ""
 
-        # 🌟 定义翻译的回调函数
         def translate_callback():
-            # 回调函数在脚本重新运行前执行，此时修改 state 是安全的
             api_key = st.session_state.get("dashscope_api_key", "")
-            current_text = st.session_state[state_key] # 直接从绑定的 key 中取值
-            
+            current_text = st.session_state[state_key]
             if api_key and current_text.strip():
                 try:
                     from src.core.llm_service import QwenLLMService
-                    # 临时注入环境变量给 LLMService 使用
                     os.environ["DASHSCOPE_API_KEY"] = api_key
                     llm = QwenLLMService()
                     translated = llm.translate_task_name(current_text)
-                    # 更新 state，下次 Rerun 时输入框会自动显示新值
                     st.session_state[state_key] = translated
                 except Exception as e:
-                    # 注意：回调函数里没法直接 st.error，通常用 print 或稍后在 UI 处理
                     print(f"翻译回调失败: {e}")
 
         col1, col2, col3 = st.columns([2, 2, 1])
         with col1:
             opts_keys = list(device_opts.keys())
             fmt_func = lambda x, d=device_opts: f"{x} ({d[x]})" if d.get(x) else x
-            prefix = st.selectbox("1. 选择本体型号", options=opts_keys, format_func=fmt_func, key=f"prefix_{key}")
+            prefix = st.selectbox("1. 选择本体型号", options=opts_keys, format_func=fmt_func, key="prefix_dataset_name")
             
         with col2:
             # 🌟 关键：直接绑定 key，不要设置 value 参数
@@ -534,63 +530,74 @@ def main():
                         collected_data[field["key"]] = render_field(field, collected_data, schema_fields)
 
         st.markdown("---")
-        
-        # ==========================================
-        # 优化：状态检查与二次确认逻辑
-        # ==========================================
+
         uuid_file = os.path.join(target_dir, "dataset_uuid.yaml")
         local_dataset_file = os.path.join(target_dir, "local_dataset_info.yaml")
         local_task_file = os.path.join(target_dir, "local_task_info.yaml")
-        
+
         is_locked = os.path.exists(uuid_file)
         has_old_config = os.path.exists(local_dataset_file) and os.path.exists(local_task_file)
 
-        # 初始化 Session State，用于控制确认框的显示
-        if "show_overwrite_confirm" not in st.session_state:
-            st.session_state.show_overwrite_confirm = False
-
         if is_locked:
-            st.error("🚫 该数据集已入库 (检测到 `dataset_uuid.yaml`)，已锁定配置修改，无法重新生成或覆盖配置文件。")
+            st.error("🚫 该数据集已入库 (检测到 `dataset_uuid.yaml`)，已锁定配置修改，无法重新生成或修改。")
 
-        # 封装保存逻辑为独立函数，保持代码整洁
-        def execute_save():
-            if 'dataset_path' not in st.session_state:
-                st.warning("请先在「数据清洗与排查」页面加载数据！")
-            elif not collected_data.get("dataset_name"):
-                st.error("请填写数据集名称！")
+        # ======= 需求2 & 4: 预览 YAML 与 重命名逻辑 =======
+        st.subheader("确认与保存")
+
+        if st.button("👁️ 预览 YAML 与配置信息", disabled=is_locked):
+            if not collected_data.get("dataset_name") or collected_data.get("dataset_name") == st.session_state.get("prefix_dataset_name", ""):
+                st.error("请完整填写「数据集名称 (自动拼接)」中的动作名称（动词_名词）！")
             else:
-                save_path = ConfigGenerator.analyze_and_save(collected_data, target_dir, filename="local_dataset_info.yaml")
-                st.success(f"🎉 标注文件生成/覆盖成功！\n文件路径: `{save_path}`")
-                with st.expander("点击查看生成的 YAML 内容 (纯英文)"):
-                    st.code(ConfigGenerator.generate_yaml_string(collected_data), language="yaml")
-            
-            # 保存完毕后，关闭确认框状态
-            st.session_state.show_overwrite_confirm = False
+                st.session_state['preview_yaml_data'] = collected_data
+                st.session_state['show_preview'] = True
 
-        # 1. 主按钮：触发生成或触发确认框
-        if st.button("💾 生成 YAML 标注文件", type="primary", disabled=is_locked):
+        if st.session_state.get('show_preview', False):
+            preview_data = st.session_state['preview_yaml_data']
+            yaml_str = ConfigGenerator.generate_yaml_string(preview_data)
+
+            st.info("👇 请二次核对以下将要生成的 YAML 内容：")
+            st.code(yaml_str, language="yaml")
+
+            final_dataset_name = preview_data["dataset_name"]
+            
             if has_old_config:
-                # 触发二次确认状态
-                st.session_state.show_overwrite_confirm = True
-            else:
-                # 没有旧文件，直接保存
-                execute_save()
-
-        # 2. 渲染二次确认框 (受 Session State 控制)
-        if st.session_state.show_overwrite_confirm:
-            st.warning("⚠️ 发现当前目录已存在旧的配置文件 (`local_dataset_info.yaml` / `local_task_info.yaml`)。继续生成将会 **覆盖** 这些文件，确定要覆盖吗？")
+                st.warning("⚠️ 发现当前目录已存在旧的配置文件，继续生成将会 **覆盖** 这些文件！")
             
+            st.warning(f"⚠️ 确认保存后，当前数据文件夹将被重命名为：\n`{final_dataset_name}`")
+
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
-                # 确认覆盖按钮
-                if st.button("🚨 确认覆盖", type="primary", use_container_width=True):
-                    execute_save()
-                    st.rerun() # 强制刷新，清理掉确认界面的 UI
+                if st.button("🚨 确认无误，生成文件并重命名", type="primary"):
+                    # 1. 保存YAML
+                    save_path = ConfigGenerator.analyze_and_save(preview_data, target_dir, filename="local_dataset_info.yaml")
+
+                    # 2. 重命名文件夹
+                    target_dir_norm = os.path.normpath(target_dir)
+                    parent_dir = os.path.dirname(target_dir_norm)
+                    new_target_dir = os.path.join(parent_dir, final_dataset_name)
+
+                    try:
+                        if target_dir_norm != new_target_dir:
+                            os.rename(target_dir_norm, new_target_dir)
+                            # 更新全局路径
+                            st.session_state['dataset_path'] = new_target_dir
+                            st.success(f"🎉 标注文件已保存！文件夹已成功重命名为 `{final_dataset_name}`！")
+                        else:
+                            st.success(f"🎉 标注文件已保存！文件夹名称已经是 `{final_dataset_name}`，无需修改。")
+
+                        # 清除预览状态
+                        st.session_state['show_preview'] = False
+                        time.sleep(1.5)
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"❌ 文件夹重命名失败 (可能被其他程序占用或权限不足): {e}")
+                        st.info("YAML 文件已生成，但请手动修改文件夹名称。")
+
             with col_btn2:
-                # 取消按钮
-                if st.button("取消操作", use_container_width=True):
-                    st.session_state.show_overwrite_confirm = False
-                    st.rerun() # 强制刷新，退回正常状态
+                if st.button("返回修改", use_container_width=True):
+                    st.session_state['show_preview'] = False
+                    st.rerun()
     # ==========================================
     # TAB 3: 词库维护 (可视化配置)
     # ==========================================
