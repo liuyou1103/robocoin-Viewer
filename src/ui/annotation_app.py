@@ -229,19 +229,16 @@ def render_field(field, current_data, all_fields=None):
 def setup_comparison_layout(sample_names, cameras):
     columns = []
     for idx, name in enumerate(sample_names):
-        cam_views = []
-        for cam in cameras:
-            cam_views.append(rrb.Spatial2DView(
-                origin=f"preview/sample_{idx}/{cam}",
-                name=f"{cam}"
-            ))
-        
-        cam_grid = rrb.Grid(*cam_views)
+        # 💡 关键修改：Spatial2DView 的 origin 不再深入到具体相机名
+        # 而是停留在 sample_{idx} 这一层，这样无论相机叫什么都能显示出来
         columns.append(rrb.Vertical(
-            rrb.TextDocumentView(origin=f"preview/sample_{idx}/info", name=f"{name}"),
-            cam_grid,
-            row_shares=[1, 12], 
-            name=f"Sample {idx+1}"
+            rrb.TextDocumentView(origin=f"preview/sample_{idx}/info", name="Dataset Info"),
+            rrb.Spatial2DView(
+                origin=f"preview/sample_{idx}", # 监听整个样本路径
+                name=f"Views"
+            ),
+            row_shares=[1, 4], 
+            name=f"Sample {idx+1}: {name}"
         ))
         
     blueprint = rrb.Blueprint(rrb.Horizontal(*columns), collapse_panels=True)
