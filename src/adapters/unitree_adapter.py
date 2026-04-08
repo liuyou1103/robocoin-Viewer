@@ -1,12 +1,10 @@
-# src/adapters/unitree_adapter.py
 import json
 import numpy as np
 import cv2
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from src.core.interface import BaseDatasetReader, FrameData, AdapterConfig
 from src.core.registry import AdapterRegistry
-from typing import Optional
 
 @AdapterRegistry.register("Unitree")
 class UnitreeAdapter(BaseDatasetReader):
@@ -18,7 +16,6 @@ class UnitreeAdapter(BaseDatasetReader):
         self.fps = 30.0
         self.image_keys = []
         
-        # [新增] 轨迹管理
         self.episode_files = []
         self.current_episode_idx = 0
 
@@ -68,7 +65,12 @@ class UnitreeAdapter(BaseDatasetReader):
         if not self.data_list: raise ValueError("JSON 中未找到有效的数据列表")
             
         first = self.data_list[0]
-        self.image_keys = list(first["colors"].keys()) if "colors" in first else ["color_0", "color_1"]
+        
+        # 💡 修复：更新 image_keys 为配置映射的名字
+        if self.config and self.config.image_keys_map:
+            self.image_keys = list(self.config.image_keys_map.keys())
+        else:
+            self.image_keys = list(first["colors"].keys()) if "colors" in first else ["color_0", "color_1"]
 
     def get_total_episodes(self) -> int:
         return len(self.episode_files)
@@ -85,12 +87,18 @@ class UnitreeAdapter(BaseDatasetReader):
         images = {}
         
         if "colors" in frame_dict:
-            for cam_name, rel_path in frame_dict["colors"].items():
-                if rel_path:
-                    fp = self.current_dir / rel_path
-                    if fp.exists():
-                        img = cv2.imread(str(fp))
-                        if img is not None: images[cam_name] = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            # 💡 修复：移除多余的嵌套循环，直接使用 mapping 遍历一次！
+            mapping = self.config.image_keys_map if (self.config and self.config.image_keys_map) else {k: k for k in frame_dict["colors"].keys()}
+            
+            for std_cam_name, original_cam_name in mapping.items():
+                if original_cam_name in frame_dict["colors"]:
+                    rel_path = frame_dict["colors"][original_cam_name]
+                    if rel_path:
+                        fp = self.current_dir / rel_path
+                        if fp.exists():
+                            img = cv2.imread(str(fp))
+                            if img is not None: 
+                                images[std_cam_name] = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         state = {}
         try:
@@ -110,9 +118,7 @@ class UnitreeAdapter(BaseDatasetReader):
         return FrameData(timestamp=frame_dict.get("idx", index)/self.fps, images=images, state=state)
     
     def get_current_episode_path(self) -> str:
-        """[新增] 返回 data.json 所在的父文件夹路径，作为整体隔离单位"""
         if self.episode_files and 0 <= self.current_episode_idx < len(self.episode_files):
-            # 使用 .parent 获取包含 data.json 和 images 的整个数据包目录
             return str(self.episode_files[self.current_episode_idx].parent)
         return None
     

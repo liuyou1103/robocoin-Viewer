@@ -15,13 +15,12 @@
 - **Unitree** (商用机器人SDK)
 - **Folder** (图片序列)
 
-通过工厂模式统一接口，新增格式只需实现`Adapter`接口：
+通过工厂模式统一接口，新增格式只需实现`Adapter`接口。现支持基于JSON规则的动态字段映射（Dynamic Key Mapping）：
 ```python
-class Adapter(ABC):
+class BaseDatasetReader(ABC):
+    def __init__(self, config: Optional[AdapterConfig] = None): ...
     @abstractmethod
-    def load_data(self, path: str) -> Dict[str, Any]: ...
-    @abstractmethod
-    def save_data(self, data: Dict[str, Any], path: str): ...
+    def load(self, file_path: str) -> bool: ...
 ```
 
 ### 🚀 基于 Rerun 的极速审查
@@ -111,6 +110,25 @@ uv install -e .
 ---
 
 ## 🧠 高级配置
+### 底层数据解析规则 (Adapter Rules)
+可通过修改 `configs/adapter_rules.json` 无代码接入全新机器人数据格式，无需修改核心Python代码。
+
+示例配置：
+```json
+{
+  "Custom_ROS_Robot": {
+    "base_type": "ROS",
+    "match_rules": {
+      "path_keywords": ["CustomRobot"]
+    },
+    "image_keys_map": {
+      "cam_front": "/camera_front/color/image_raw",
+      "cam_wrist": "/camera_wrist/color/image_raw"
+    }
+  }
+}
+```
+
 ### 添加新场景分类
 在`configs/vocabulary.json`中修改：
 ```json
@@ -146,6 +164,7 @@ uv install -e .
 robocoin-viewer/
 ├── configs/              # 配置文件
 │   ├── vocabulary.json   # 标注字段定义
+│   ├── adapter_rules.json # 底层数据解析与字段映射规则
 │   └── schemas/          # 数据校验规则
 ├── src/
 │   ├── adapters/         # 数据格式适配器
@@ -159,4 +178,3 @@ robocoin-viewer/
 ```
 
 ---
-

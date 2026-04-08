@@ -1,4 +1,6 @@
 {
+  "_instruction": "此配置文件用于动态适配不同格式的机器人数据集。带 'Example_' 前缀的项为教学示例，不会被系统实际执行。编写实际规则时，请参考这些示例。",
+
   "HDF5": {
     "length_reference_key": "action"
   },
@@ -23,6 +25,48 @@
     "state_keys_map": {
       "qpos_left": "observations/arm/left/joints",
       "qpos_right": "observations/arm/right/joints"
+    }
+  },
+
+  "Example_ROS_Custom": {
+    "_comment": "【示例】自定义 ROS 数据包解析规则，将底层的复杂 Topic 映射为简单的标准名称",
+    "base_type": "ROS",
+    "match_rules": {
+      "path_keywords": ["CustomRobot", "test_bag"],
+      "file_extensions": [".mcap", ".bag"]
+    },
+    "image_keys_map": {
+      "cam_front": "/camera_front/color/image_raw",
+      "cam_wrist": "/camera_wrist/color/image_raw"
+    }
+  },
+
+  "Example_LeRobot_Aloha": {
+    "_comment": "【示例】针对 Aloha 设备的 LeRobot 格式自定义映射。覆盖原有的 observations.xxx 路径",
+    "base_type": "LeRobot",
+    "match_rules": {
+      "path_keywords": ["aloha", "aloha_mobile"]
+    },
+    "image_keys_map": {
+      "cam_high": "observation.images.cam_high",
+      "cam_right_wrist": "observation.images.cam_right_wrist",
+      "cam_left_wrist": "observation.images.cam_left_wrist"
+    },
+    "state_keys_map": {
+      "qpos": "observation.state",
+      "action": "action"
+    }
+  },
+
+  "Example_Unitree_Custom": {
+    "_comment": "【示例】宇树 (Unitree) 数据的特定相机重命名，将原本的 color_0 转换为具有业务语义的名字",
+    "base_type": "Unitree",
+    "match_rules": {
+      "path_keywords": ["Unitree_G1"]
+    },
+    "image_keys_map": {
+      "head_camera": "color_0",
+      "chest_camera": "color_1"
     }
   }
 }
